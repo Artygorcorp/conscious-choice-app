@@ -135,7 +135,7 @@
             background-color: #27ae60;
         }
 
-        select, textarea {
+        select {
             width: 100%;
             padding: 10px;
             margin: 10px 0;
@@ -176,7 +176,7 @@
             bottom: 0;
             left: 50%;
             transform: translateX(-50%);
-            width: 300px; /* Уменьшена ширина для иконок */
+            width: 240px; /* Уменьшена ширина для круглых иконок */
             height: 60px;
             background-color: #1a1a1a;
             display: flex;
@@ -184,6 +184,7 @@
             align-items: center;
             border-top: 1px solid #2d2d2d;
             box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.5);
+            border-radius: 30px 30px 0 0;
         }
 
         .nav-item {
@@ -191,12 +192,31 @@
             color: #888;
             font-size: 0;
             cursor: pointer;
-            transition: color 0.3s;
+            transition: color 0.3s, background-color 0.3s;
+            width: 50px;
+            height: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border-radius: 50%;
+            background-color: #2d2d2d;
         }
 
-        .nav-item.active { color: #2ecc71; }
+        .nav-item.active { 
+            background-color: #3cba92; /* Более светлый зеленый для активной иконки */
+            color: #fff;
+        }
 
-        .nav-item img { width: 24px; height: 24px; margin-bottom: 0; }
+        .nav-item img { 
+            width: 24px; 
+            height: 24px; 
+            margin: 0;
+            transition: opacity 0.3s;
+        }
+
+        .nav-item.active img {
+            opacity: 1; /* Убедимся, что иконка активна и видна */
+        }
 
         .checkin {
             text-align: center;
@@ -256,6 +276,35 @@
             transform: scale(1.05);
             background-color: #27ae60;
         }
+
+        /* Стили для реферальной ссылки */
+        .referral-link {
+            margin-top: 20px;
+            padding: 10px;
+            background-color: #3d3d3d;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 300px;
+            text-align: center;
+            word-break: break-all;
+        }
+
+        .copy-button {
+            background-color: #2ecc71;
+            color: #1a1a1a;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: transform 0.3s, background-color 0.3s;
+            font-size: 0.9em;
+        }
+
+        .copy-button:hover {
+            transform: scale(1.05);
+            background-color: #27ae60;
+        }
     </style>
 </head>
 <body>
@@ -267,6 +316,9 @@
             <p>Баланс: <span id="balance">0 FLIP</span></p>
             <h2>Ваша история решений</h2>
             <ul id="historyList" class="history-list"></ul>
+            <h2>Ваша реферальная ссылка</h2>
+            <div class="referral-link" id="referralLink"></div>
+            <button class="copy-button" id="copyReferral">Скопировать</button>
             <button class="button" id="backToNavUser">Назад</button>
         </div>
 
@@ -383,6 +435,8 @@
         const happyButton = document.getElementById('happy');
         const unhappyButton = document.getElementById('unhappy');
         const retryButton = document.getElementById('retry');
+        const referralLink = document.getElementById('referralLink');
+        const copyReferral = document.getElementById('copyReferral');
 
         let history = JSON.parse(localStorage.getItem('decisionHistory')) || [];
         let lastCheckin = localStorage.getItem('lastCheckin') || null;
@@ -466,20 +520,26 @@
         backToNavTasks.addEventListener('click', () => showScreen('gamesSection'));
         backToNavGames.addEventListener('click', () => showScreen('gamesSection'));
 
-        // Daily check-in logic (now with FLIP and updated message)
+        // Daily check-in logic (now with FLIP and updated message, with enhanced debugging)
         checkinButton.addEventListener('click', () => {
-            const now = new Date().toISOString().split('T')[0];
-            checkinStatus.textContent = ''; // Очистка предыдущего сообщения
-            if (lastCheckin !== now) {
-                balance += 10; // Бонус за чек-ин (например, 10 FLIP)
-                localStorage.setItem('balance', balance);
-                localStorage.setItem('lastCheckin', now);
-                document.getElementById('balance').textContent = `${balance} FLIP`;
-                checkinStatus.textContent = 'Бонус 10 FLIP получен!';
-            } else {
-                checkinStatus.textContent = 'Вы сегодня уже нажимали';
+            try {
+                const now = new Date().toISOString().split('T')[0];
+                checkinStatus.textContent = ''; // Очистка предыдущего сообщения
+                console.log('Check-in clicked, balance:', balance, 'lastCheckin:', lastCheckin, 'now:', now); // Для отладки
+
+                if (!lastCheckin || lastCheckin !== now) { // Убедимся, что lastCheckin инициализирован
+                    balance += 10; // Бонус за чек-ин (например, 10 FLIP)
+                    localStorage.setItem('balance', balance);
+                    localStorage.setItem('lastCheckin', now);
+                    document.getElementById('balance').textContent = `${balance} FLIP`;
+                    checkinStatus.textContent = 'Бонус 10 FLIP получен!';
+                } else {
+                    checkinStatus.textContent = 'Вы сегодня уже нажимали';
+                }
+            } catch (error) {
+                console.error('Error in check-in logic:', error);
+                checkinStatus.textContent = 'Произошла ошибка, попробуйте позже';
             }
-            console.log('Check-in clicked, balance:', balance, 'lastCheckin:', lastCheckin, 'now:', now); // Для отладки
         });
 
         function updateHistory() {
@@ -492,7 +552,22 @@
             });
         }
 
+        // Referral link setup
+        const userId = user.id || 'unknown';
+        const referralUrl = `https://artygorcorp.github.io/conscious-choice-app/?ref=${userId}`;
+        referralLink.textContent = referralUrl;
+
+        // Copy referral link to clipboard
+        copyReferral.addEventListener('click', () => {
+            navigator.clipboard.writeText(referralUrl).then(() => {
+                alert('Реферальная ссылка скопирована в буфер обмена!');
+            }).catch(err => {
+                console.error('Ошибка копирования:', err);
+                alert('Не удалось скопировать ссылку, попробуйте вручную.');
+            });
+        });
+
         updateHistory();
     </script>
 </body>
-</html> 
+</html>
