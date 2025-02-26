@@ -405,17 +405,101 @@
         tg.ready();
         tg.expand();
 
-        // Get user info from Telegram
-        const user = tg.initDataUnsafe?.user || {};
-        document.getElementById('userName').textContent = user.first_name || 'Гость';
-        document.getElementById('userId').textContent = user.id || 'Неизвестен';
+        // Get and validate user info from Telegram
+        const initData = tg.initDataUnsafe;
+        const user = initData?.user || {};
+        const userId = user.id || 'unknown';
+        const userName = user.first_name || 'Гость';
+
+        // Mock API endpoints (replace with real API calls)
+        const API_BASE_URL = 'https://your-backend-api.com/api'; // Замените на реальный URL вашего бэкенда
+
+        async function fetchUserData() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/users/${userId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${initData}` // Используем initData для проверки токена
+                    }
+                });
+                if (!response.ok) throw new Error('Failed to fetch user data');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching user data:', error);
+                return { balance: 0, history: [], lastCheckin: null };
+            }
+        }
+
+        async function updateUserBalance(amount) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/users/${userId}/balance`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${initData}`
+                    },
+                    body: JSON.stringify({ amount })
+                });
+                if (!response.ok) throw new Error('Failed to update balance');
+                return await response.json();
+            } catch (error) {
+                console.error('Error updating balance:', error);
+                return null;
+            }
+        }
+
+        async function updateUserHistory(entry) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/users/${userId}/history`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${initData}`
+                    },
+                    body: JSON.stringify(entry)
+                });
+                if (!response.ok) throw new Error('Failed to update history');
+                return await response.json();
+            } catch (error) {
+                console.error('Error updating history:', error);
+                return null;
+            }
+        }
+
+        async function getReferralLink() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/users/${userId}/referral`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${initData}`
+                    }
+                });
+                if (!response.ok) throw new Error('Failed to fetch referral link');
+                return await response.json();
+            } catch (error) {
+                console.error('Error fetching referral link:', error);
+                return `https://artygorcorp.github.io/conscious-choice-app/?ref=${userId}`;
+            }
+        }
+
+        // Initialize user data
+        let userData = { balance: 0, history: [], lastCheckin: null };
+        (async () => {
+            userData = await fetchUserData();
+            document.getElementById('balance').textContent = `${userData.balance} FLIP`;
+            document.getElementById('userName').textContent = userName;
+            document.getElementById('userId').textContent = userId;
+            updateHistory();
+            const referral = await getReferralLink();
+            document.getElementById('referralLink').textContent = referral;
+        })();
 
         const flipButton = document.getElementById('flipButton');
         const coin = document.getElementById('coin');
         const coinSection = document.getElementById('coinSection');
         const reflectionBox = document.getElementById('reflectionBox');
-        const saveReflection = document.getElementById('saveReflection');
-        const reflectionInput = document.getElementById('reflection');
         const categorySelect = document.getElementById('category');
         const historyList = document.getElementById('historyList');
         const coinFlipGame = document.getElementById('coinFlipGame');
@@ -437,13 +521,6 @@
         const retryButton = document.getElementById('retry');
         const referralLink = document.getElementById('referralLink');
         const copyReferral = document.getElementById('copyReferral');
-
-        let history = JSON.parse(localStorage.getItem('decisionHistory')) || [];
-        let lastCheckin = localStorage.getItem('lastCheckin') || null;
-        let balance = parseFloat(localStorage.getItem('balance')) || 0;
-
-        // Update balance display
-        document.getElementById('balance').textContent = `${balance} FLIP`;
 
         // Show welcome modal on load
         welcomeModal.style.display = 'flex';
@@ -491,14 +568,14 @@
         unhappyButton.addEventListener('click', () => saveReflectionChoice('Не доволен'));
         retryButton.addEventListener('click', () => saveReflectionChoice('Хочу еще раз'));
 
-        function saveReflectionChoice(reflection) {
-            const result = reflectionInput.dataset.result;
-            const category = reflectionInput.dataset.category || '';
+        async function saveReflectionChoice(reflection) {
+            const result = coin.textContent;
+            const category = categorySelect.value || '';
             const date = new Date().toLocaleString();
             
             const entry = { result, category, reflection, date };
-            history.push(entry);
-            localStorage.setItem('decisionHistory', JSON.stringify(history));
+            await updateUserHistory(entry);
+            userData.history.push(entry);
             updateHistory();
             
             reflectionBox.classList.remove('active');
@@ -520,19 +597,21 @@
         backToNavTasks.addEventListener('click', () => showScreen('gamesSection'));
         backToNavGames.addEventListener('click', () => showScreen('gamesSection'));
 
-        // Daily check-in logic (now with FLIP and updated message, with enhanced debugging)
-        checkinButton.addEventListener('click', () => {
+        // Daily check-in logic (now with API calls)
+        checkinButton.addEventListener('click', async () => {
             try {
                 const now = new Date().toISOString().split('T')[0];
                 checkinStatus.textContent = ''; // Очистка предыдущего сообщения
-                console.log('Check-in clicked, balance:', balance, 'lastCheckin:', lastCheckin, 'now:', now); // Для отладки
+                console.log('Check-in clicked, balance:', userData.balance, 'lastCheckin:', userData.lastCheckin, 'now:', now);
 
-                if (!lastCheckin || lastCheckin !== now) { // Убедимся, что lastCheckin инициализирован
-                    balance += 10; // Бонус за чек-ин (например, 10 FLIP)
-                    localStorage.setItem('balance', balance);
-                    localStorage.setItem('lastCheckin', now);
-                    document.getElementById('balance').textContent = `${balance} FLIP`;
-                    checkinStatus.textContent = 'Бонус 10 FLIP получен!';
+                if (!userData.lastCheckin || userData.lastCheckin !== now) {
+                    const newBalance = await updateUserBalance(10); // Добавляем 10 FLIP
+                    if (newBalance) {
+                        userData.balance = newBalance.balance;
+                        userData.lastCheckin = now;
+                        document.getElementById('balance').textContent = `${userData.balance} FLIP`;
+                        checkinStatus.textContent = 'Бонус 10 FLIP получен!';
+                    }
                 } else {
                     checkinStatus.textContent = 'Вы сегодня уже нажимали';
                 }
@@ -544,7 +623,7 @@
 
         function updateHistory() {
             historyList.innerHTML = '';
-            history.forEach(entry => {
+            userData.history.forEach(entry => {
                 const li = document.createElement('li');
                 li.className = 'history-item';
                 li.textContent = `${entry.date} - ${entry.result} (${entry.category}) - ${entry.reflection || 'Без заметок'}`;
@@ -553,12 +632,14 @@
         }
 
         // Referral link setup
-        const userId = user.id || 'unknown';
-        const referralUrl = `https://artygorcorp.github.io/conscious-choice-app/?ref=${userId}`;
-        referralLink.textContent = referralUrl;
+        (async () => {
+            const referral = await getReferralLink();
+            referralLink.textContent = referral;
+        })();
 
         // Copy referral link to clipboard
         copyReferral.addEventListener('click', () => {
+            const referralUrl = referralLink.textContent;
             navigator.clipboard.writeText(referralUrl).then(() => {
                 alert('Реферальная ссылка скопирована в буфер обмена!');
             }).catch(err => {
@@ -566,8 +647,6 @@
                 alert('Не удалось скопировать ссылку, попробуйте вручную.');
             });
         });
-
-        updateHistory();
     </script>
 </body>
 </html>
